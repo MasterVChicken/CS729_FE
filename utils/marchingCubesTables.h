@@ -5,7 +5,7 @@
 #ifndef CS729_FE_MARCHINGCUBESTABLES_H
 #define CS729_FE_MARCHINGCUBESTABLES_H
 
-#include "../util/FlyingEdges_Config.h"
+#include "../config/Config.h"
 
 
 __constant__ uchar

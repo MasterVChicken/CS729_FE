@@ -9,6 +9,7 @@
 #include <string>
 #include "/config/config.h"
 #include "/utils/Image3D.h"
+#include "/utils/marchingCubesTables.h"
 
 
 class FlyingEdges {
@@ -97,6 +98,10 @@ class FlyingEdges {
 
     ~FlyingEdgesAlgorithm() {
         deallocate();
+    }
+
+    void loadMCtables(){
+
     }
 
     void deallocate() {

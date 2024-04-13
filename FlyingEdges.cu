@@ -220,8 +220,8 @@ void get_cubeCases(
         //
         // TODO: set table in device memory!
         //
-        triCount += cuda_util::numTris[caseId];
-        isCut = cuda_util::isCut[caseId]; // if xr == nx-1, then xr-1 is cut
+        triCount += numTris[caseId];
+        isCut = isCut[caseId]; // if xr == nx-1, then xr-1 is cut
         // so this will be set
 
         xstart += isCut[0];
@@ -321,7 +321,7 @@ void getGhostXY(
         return;
 
     int xstart = 0;
-    int ystart = 0; // TODO don't set initial values in gridEdge Constructor;
+    int ystart = 0;
 
     uchar c0;
     uchar c1;
@@ -473,7 +473,7 @@ void blockAccum(
 
     bool isEndK = k == nz - 1;
     for (int j = 0; j != ny - 1; ++j) {
-        FlyingEdgesAlgorithm::gridEdge &ge = gridEdges[k * ny + j];
+        FlyingEdges::gridEdge &ge = gridEdges[k * ny + j];
 
         ge.xstart += accum[4 * (threadIdx.y - 1) + 0];
         ge.ystart += accum[4 * (threadIdx.y - 1) + 1];
@@ -511,7 +511,7 @@ void gridAccum(
     int addTri = blockAccum[4 * blockIdx.z + 3];
 
     for (int j = 0; j != ny; ++j) {
-        FlyingEdgesm::gridEdge &ge = gridEdges[k * ny + j];
+        FlyingEdges::gridEdge &ge = gridEdges[k * ny + j];
         ge.xstart += addX;
         ge.ystart += addY;
         ge.zstart += addZ;
@@ -751,8 +751,8 @@ void interpolateOnCube(
         scalar_t *isovals,
         scalar_t *out) {
     // TODO: fix device memory table here
-    uchar i0 = cuda_util::edgeVertices[edge][0];
-    uchar i1 = cuda_util::edgeVertices[edge][1];
+    uchar i0 = edgeVertices[edge][0];
+    uchar i1 = edgeVertices[edge][1];
 
     scalar_t weight = (isoval - isovals[i0]) / (isovals[i1] - isovals[i0]);
     interpolate(weight, pts + 3 * i0, pts + 3 * i1, out);
