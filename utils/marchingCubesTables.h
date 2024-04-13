@@ -5,7 +5,7 @@
 #ifndef CS729_FE_MARCHINGCUBESTABLES_H
 #define CS729_FE_MARCHINGCUBESTABLES_H
 
-#include "../config/Config.h"
+#include "../config/config.h"
 
 
 __constant__ uchar

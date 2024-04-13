@@ -7,12 +7,14 @@
 
 #include <iostream>
 #include <string>
-#include "/config/config.h"
-#include "/utils/Image3D.h"
-#include "/utils/marchingCubesTables.h"
+#include "config/config.h"
+#include "utils/Image3D.h"
+#include "utils/marchingCubesTables.h"
 
-
-class FlyingEdges {
+// We changed type of FlyingEdges from 'class' to 'struct' because it ocurred error: 'here is inaccessible'.
+// We searched internet and found that it was because class members are, by default, private.
+// So we changed to struct because struct members are public by default.
+struct FlyingEdges {
     FlyingEdges(Image3D image, scalar_t const &isoval)
             : isoval(isoval),
               nx(image.getX()),
@@ -26,49 +28,56 @@ class FlyingEdges {
         cuErr = cudaMalloc(&pointValues, nx * ny * nz * sizeof(scalar_t));
         if (cuErr != cudaSuccess) {
             std::cout << "Error occured when allocating memory for pointValues" << std::endl;
+            std::cout << "MEM TRIED TO BE ALLOCATED: " << nx * ny * nz * sizeof(scalar_t) << std::endl;
             throw;
         }
 
         cuErr = cudaMalloc(&zero_pos, 3 * sizeof(scalar_t));
         if (cuErr != cudaSuccess) {
             std::cout << "Error occured when allocating memory for zero_pos" << std::endl;
+            std::cout << "MEM TRIED TO BE ALLOCATED: " << 3 * sizeof(scalar_t) << std::endl;
             throw;
         }
 
         cuErr = cudaMalloc(&spacing, 3 * sizeof(scalar_t));
         if (cuErr != cudaSuccess) {
             std::cout << "Error occured when allocating memory for spacing" << std::endl;
+            std::cout << "MEM TRIED TO BE ALLOCATED: " << 3 * sizeof(scalar_t) << std::endl;
             throw;
         }
 
         cuErr = cudaMalloc(&gridEdges, ny * nz * sizeof(gridEdge));
         if (cuErr != cudaSuccess) {
             std::cout << "Error occured when allocating memory for gridEdges" << std::endl;
+            std::cout << "MEM TRIED TO BE ALLOCATED: " << ny * nz * sizeof(scalar_t) << std::endl;
             throw;
         }
 
         cuErr = cudaMalloc(&triCounter, (ny - 1) * (nz - 1) * sizeof(int));
         if (cuErr != cudaSuccess) {
             std::cout << "Error occured when allocating memory for triCounter" << std::endl;
+            std::cout << "MEM TRIED TO BE ALLOCATED: " << (ny-1) * (nz-1) * sizeof(scalar_t) << std::endl;
             throw;
         }
 
         cuErr = cudaMalloc(&edgeCases, (nx - 1) * ny * nz * sizeof(uchar));
         if (cuErr != cudaSuccess) {
             std::cout << "Error occured when allocating memory for edgeCases" << std::endl;
+            std::cout << "MEM TRIED TO BE ALLOCATED: " << (nx-1) * ny * nz * sizeof(scalar_t) << std::endl;
             throw;
         }
 
         cuErr = cudaMalloc(&cubeCases, (nx - 1) * (ny - 1) * (nz - 1) * sizeof(uchar));
         if (cuErr != cudaSuccess) {
             std::cout << "Error occured when allocating memory for cubeCases" << std::endl;
+            std::cout << "MEM TRIED TO BE ALLOCATED: " << (nx-1) * (ny-1) * (nz-1) * sizeof(scalar_t) << std::endl;
             throw;
         }
 
         // Move data from host to device
         cudaMemcpy(
                 pointValues,
-                image.getDataPointer,
+                image.getDataPointer(),
                 nx * ny * nz * sizeof(scalar_t),
                 cudaMemcpyHostToDevice);
 
@@ -79,12 +88,12 @@ class FlyingEdges {
         tmp[2] = imageZp[2];
 
         cudaMemcpy(
-                zeroPos,
+                zero_pos,
                 tmp,
                 3 * sizeof(scalar_t),
                 cudaMemcpyHostToDevice);
 
-        scalar_t *imageSp = image.getSpacing();
+        auto imageSp = image.getSpacing();
         tmp[0] = imageSp[0];
         tmp[1] = imageSp[1];
         tmp[2] = imageSp[2];
@@ -96,7 +105,7 @@ class FlyingEdges {
                 cudaMemcpyHostToDevice);
     }
 
-    ~FlyingEdgesAlgorithm() {
+    ~FlyingEdges() {
         deallocate();
     }
 
@@ -107,7 +116,7 @@ class FlyingEdges {
     void deallocate() {
         if (!deallocated) {
             cudaFree(pointValues);
-            cudaFree(zeroPos);
+            cudaFree(zero_pos);
             cudaFree(spacing);
             cudaFree(gridEdges);
             cudaFree(triCounter);

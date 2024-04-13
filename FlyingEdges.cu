@@ -3,10 +3,8 @@
 //
 
 #include "FlyingEdges.cuh"
-#include "/utils/marchingCubesTables.h"
-#include <numeric>
-#include <algorithm>
-#include <iostream>
+#include "utils/marchingCubesTables.h"
+#include "config/config.h"
 
 /// Pass 1 of the algorithm labels each edge parallel to the x-axis as cut
 // or not. In the process, each gridEdge is assigned an xl and xr.
@@ -68,7 +66,7 @@ __global__
 void x_edge_trim(
         int nx, int ny, int nz,                    // input
         uchar *edgeCases,                          // input
-        FlyingEdgesAlgorithm::gridEdge *gridEdges) // output
+        FlyingEdges::gridEdge *gridEdges) // output
 {
     int j = blockIdx.x * blockDim.x + threadIdx.x;
     int k = blockIdx.y * blockDim.y + threadIdx.y;
@@ -130,10 +128,10 @@ void FlyingEdges::pass1() {
 __device__
 void calcTrimValues(
         int &xl, int &xr,
-        gridEdge const &ge0,
-        gridEdge const &ge1,
-        gridEdge const &ge2,
-        gridEdge const &ge3) {
+        FlyingEdges::gridEdge const &ge0,
+        FlyingEdges::gridEdge const &ge1,
+        FlyingEdges::gridEdge const &ge2,
+        FlyingEdges::gridEdge const &ge3) {
 
     xl = min(ge0.xl, min(ge1.xl, min(ge2.xl, ge3.xl)));
     xr = max(ge0.xr, max(ge1.xr, max(ge2.xr, ge3.xr)));
@@ -206,7 +204,7 @@ void get_cubeCases(
     int ystart = 0;
     int zstart = 0;
 
-    const bool *isCut;
+    const bool *isCutCur;
     for (int i = xl; i != xr; ++i) {
         uchar caseId = calcCubeCase(ec0[i], ec1[i], ec2[i], ec3[i]);
 
@@ -221,20 +219,20 @@ void get_cubeCases(
         // TODO: set table in device memory!
         //
         triCount += numTris[caseId];
-        isCut = isCut[caseId]; // if xr == nx-1, then xr-1 is cut
+        isCutCur = isCut[caseId]; // if xr == nx-1, then xr-1 is cut
         // so this will be set
 
-        xstart += isCut[0];
-        ystart += isCut[3];
-        zstart += isCut[8];
+        xstart += isCutCur[0];
+        ystart += isCutCur[3];
+        zstart += isCutCur[8];
     }
 
     triCounter[k * (ny - 1) + j] = triCount;
 
     if (xr == nx - 1) {
         // isCut was set at i = xr-1
-        ystart += isCut[1];
-        zstart += isCut[9];
+        ystart += isCutCur[1];
+        zstart += isCutCur[9];
     }
 
     ge0.xstart = xstart;
@@ -346,7 +344,7 @@ void getGhostXY(
     ge0.zstart = 0;
 }
 
-void FlyingEdgesAlgorithm::pass2() {
+void FlyingEdges::pass2() {
     // pass2 calculates
     //   1) cubeCases for each block ray
     //   2) triCount for each block ray
@@ -398,7 +396,7 @@ __global__
 void blockAccum(
         int nx, int ny, int nz, // which are needed TODO?
         int *triCounter,
-        Flying::gridEdge *gridEdges,
+        FlyingEdges::gridEdge *gridEdges,
         int *blockAccum) {
     int k = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -525,7 +523,7 @@ void gridAccum(
     }
 }
 
-void FlyingEdgesAlgorithm::pass3() {
+void FlyingEdges::pass3() {
     // Split the z axis
     // Kernel 1: calculate the accum values on block sync
     //           then accum individual values
@@ -592,7 +590,7 @@ void FlyingEdgesAlgorithm::pass3() {
     }
 
     // Allocate memory for points, normals and tris
-    outputAllocated = true;
+    // outputAllocated = true;
     numPoints = hostBlockAccum[4 * (numBlocks - 1) + 0] +
                 hostBlockAccum[4 * (numBlocks - 1) + 1] +
                 hostBlockAccum[4 * (numBlocks - 1) + 2];
@@ -770,19 +768,6 @@ void getPointsAndNormals(
     int j = blockIdx.x * blockDim.x + threadIdx.x;
     int k = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (DEBUG) {
-        if (j == 0 && k == 0) {
-//            for(int i = 0; i != 3*1370424; ++i)
-//            {
-//                points[i] = -1;
-//                normals[i] = -1;
-//            }
-
-            for (int i = 0; i != 3 * 2740864; ++i)
-                tris[i] = -1;
-        }
-    }
-
     if (j >= ny - 1 || k >= nz - 1)
         return;
 
@@ -829,7 +814,7 @@ void getPointsAndNormals(
             continue;
         }
 
-        const bool *isCut = isCut[caseId]; // has 12 elements
+        const bool *isCutCur = isCut[caseId]; // has 12 elements
 
         // Most of the information contained in pointCube, isovalCube
         // and gradCube will be used--but not necessarily all. It has
@@ -846,7 +831,7 @@ void getPointsAndNormals(
         // Add Points and normals.
         // Calculate global indices for triangles
         int globalIdxs[12];
-        if (isCut[0]) {
+        if (isCutCur[0]) {
             int idx = ge0.xstart + x0counter;
             interpolateOnCube(0, isoval, pointCube, isovalCube, points + 3 * idx);
             interpolateOnCube(0, isoval, gradCube, isovalCube, normals + 3 * idx);
@@ -854,7 +839,7 @@ void getPointsAndNormals(
             ++x0counter;
         }
 
-        if (isCut[3]) {
+        if (isCutCur[3]) {
             int idx = ge0.ystart + y0counter;
             interpolateOnCube(3, isoval, pointCube, isovalCube, points + 3 * idx);
             interpolateOnCube(3, isoval, gradCube, isovalCube, normals + 3 * idx);
@@ -862,7 +847,7 @@ void getPointsAndNormals(
             ++y0counter;
         }
 
-        if (isCut[8]) {
+        if (isCutCur[8]) {
             int idx = ge0.zstart + z0counter;
             interpolateOnCube(8, isoval, pointCube, isovalCube, points + 3 * idx);
             interpolateOnCube(8, isoval, gradCube, isovalCube, normals + 3 * idx);
@@ -879,7 +864,7 @@ void getPointsAndNormals(
 
         // Manage boundary cases if needed. Otherwise just update
         // globalIdx.
-        if (isCut[1]) {
+        if (isCutCur[1]) {
             int idx = ge0.ystart + y0counter;
             if (isXEnd) {
 
@@ -891,7 +876,7 @@ void getPointsAndNormals(
             globalIdxs[1] = idx;
         }
 
-        if (isCut[9]) {
+        if (isCutCur[9]) {
             int idx = ge0.zstart + z0counter;
             if (isXEnd) {
                 interpolateOnCube(9, isoval, pointCube, isovalCube, points + 3 * idx);
@@ -901,7 +886,7 @@ void getPointsAndNormals(
             globalIdxs[9] = idx;
         }
 
-        if (isCut[2]) {
+        if (isCutCur[2]) {
             int idx = ge1.xstart + x1counter;
             if (isYEnd) {
                 interpolateOnCube(2, isoval, pointCube, isovalCube, points + 3 * idx);
@@ -911,7 +896,7 @@ void getPointsAndNormals(
             ++x1counter;
         }
 
-        if (isCut[10]) {
+        if (isCutCur[10]) {
             int idx = ge1.zstart + z1counter;
             if (isYEnd) {
                 interpolateOnCube(10, isoval, pointCube, isovalCube, points + 3 * idx);
@@ -921,7 +906,7 @@ void getPointsAndNormals(
             ++z1counter;
         }
 
-        if (isCut[4]) {
+        if (isCutCur[4]) {
             int idx = ge2.xstart + x2counter;
             if (isZEnd) {
                 interpolateOnCube(4, isoval, pointCube, isovalCube, points + 3 * idx);
@@ -931,7 +916,7 @@ void getPointsAndNormals(
             ++x2counter;
         }
 
-        if (isCut[7]) {
+        if (isCutCur[7]) {
             int idx = ge2.ystart + y2counter;
             if (isZEnd) {
                 interpolateOnCube(7, isoval, pointCube, isovalCube, points + 3 * idx);
@@ -941,7 +926,7 @@ void getPointsAndNormals(
             ++y2counter;
         }
 
-        if (isCut[11]) {
+        if (isCutCur[11]) {
             int idx = ge1.zstart + z1counter;
             if (isXEnd and isYEnd) {
                 interpolateOnCube(11, isoval, pointCube, isovalCube, points + 3 * idx);
@@ -951,7 +936,7 @@ void getPointsAndNormals(
             globalIdxs[11] = idx;
         }
 
-        if (isCut[5]) {
+        if (isCutCur[5]) {
             int idx = ge2.ystart + y2counter;
             if (isXEnd and isZEnd) {
                 interpolateOnCube(5, isoval, pointCube, isovalCube, points + 3 * idx);
@@ -961,7 +946,7 @@ void getPointsAndNormals(
             globalIdxs[5] = idx;
         }
 
-        if (isCut[6]) {
+        if (isCutCur[6]) {
             int idx = ge3.xstart + x3counter;
             if (isYEnd and isZEnd) {
                 interpolateOnCube(6, isoval, pointCube, isovalCube, points + 3 * idx);
@@ -972,7 +957,7 @@ void getPointsAndNormals(
         }
 
         // Add triangles
-        const char *caseTri = cuda_util::caseTriangles[caseId]; // size 16
+        const char *caseTri = caseTriangles[caseId]; // size 16
         for (int idx = 0; caseTri[idx] != -1; idx += 3) {
             tris[3 * triIdx + 0] = i;
             tris[3 * triIdx + 1] = j;
@@ -987,15 +972,15 @@ void getPointsAndNormals(
 }
 
 
-void FlyingEdgesAlgorithm::pass4() {
+void FlyingEdges::pass4() {
     // pass4 calculates points and normals
     //   1) points and normals
 
     // 1st kernel:           Calculate the main cube rays
     // 2nd and third kernel:
 
-    int ty = 1;//FE_BLOCK_WIDTH_Y / 2; // divide by 2? TODO figure out this problem..
-    int tz = 1;//FE_BLOCK_WIDTH_Z / 2; // gah....
+    int ty = FE_BLOCK_WIDTH_Y / 2;
+    int tz = FE_BLOCK_WIDTH_Z / 2;
     uint3 gridDim = make_uint3(((ny - 1) + ty - 1) / ty, ((nz - 1) + tz - 1) / tz, 1);
     uint3 blockDim = make_uint3(ty, tz, 1);
 
@@ -1004,7 +989,7 @@ void FlyingEdgesAlgorithm::pass4() {
 
     getPointsAndNormals<<<gridDim, blockDim>>>(
             nx, ny, nz,                                    // input
-            pointValues, zeroPos, spacing,                 // input
+            pointValues, zero_pos, spacing,                 // input
             isoval,                                        // input
             gridEdges, triCounter, cubeCases,              // input
             points, normals, tris);                        // output

@@ -5,8 +5,8 @@
 #ifndef CS729_FE_RAWIMAGEREADER_H
 #define CS729_FE_RAWIMAGEREADER_H
 
-#include<vector>
-#include "config/config.h"
+#include  <vector>
+#include "../config/config.h"
 
 // read meta data from raw file
 std::vector<unsigned short> readRawFile(const std::string &filePath, int width, int height, int depth) {
