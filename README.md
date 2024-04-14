@@ -1,2 +1,6 @@
 # CS729_FE
 Course project for implementing Flying Edges algorithm.
+
+How to run?  
+1. nvcc -o main.exe main.cu FlyingEdges.cu  
+2. ./main.exe

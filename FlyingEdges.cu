@@ -6,7 +6,7 @@
 #include "utils/marchingCubesTables.h"
 #include "config/config.h"
 
-/// Pass 1 of the algorithm labels each edge parallel to the x-axis as cut
+// Pass 1 of the algorithm labels each edge parallel to the x-axis as cut
 // or not. In the process, each gridEdge is assigned an xl and xr.
 // All edges before xl are uncut and all edges after xr are uncut.
 // Subsequent passes of the algorithm don't look outside of [xl, xr).
@@ -32,6 +32,7 @@ uchar calcCaseEdge(
         return 3;
 }
 
+// TODO: cuda-memcheck shows that it has memory leak here
 __global__
 void assign_edgeCases(
         scalar_t *pointValues,
@@ -45,17 +46,25 @@ void assign_edgeCases(
     int j = blockIdx.y;
     int k = blockIdx.z;
 
+    // Why plus 1?
+    // Because we need to make sure that we can deal with boundary case
+    // To make compare for the last element of current block and the first element of next block
+    // But we cannot straightly access across different blocks, so we do pre-load here.
+    // TODO: there might be problem with FE_BLOCK_WIDTH_PLUS here(too large)
     __shared__ bool isGE[FE_BLOCK_WIDTH_PLUS_ONE];
 
     if (i < nx)
         isGE[threadIdx.x] = pointValues[k * nx * ny + j * nx + i] >= isoval;
 
+    // TODO: fix memory out of boundary here
     if (threadIdx.x == 0 && i < nx - 1) {
+        // Deal with the first element of next block
         isGE[blockDim.x] = pointValues[k * nx * ny + j * nx + i + blockDim.x] >= isoval;
     }
 
     __syncthreads();
 
+    // write results back to edgeCases
     if (i < nx - 1) {
         uchar caseEdge = calcCaseEdge(isGE[threadIdx.x], isGE[threadIdx.x + 1]);
         edgeCases[k * (nx - 1) * ny + j * (nx - 1) + i] = caseEdge;
@@ -125,6 +134,7 @@ void FlyingEdges::pass1() {
 // In addition to determining case ID of each cell, pass 2 counts the
 // number of cuts on incident to each gridEdge.
 
+// We can get the xl and xr of a signle R-jk cell array
 __device__
 void calcTrimValues(
         int &xl, int &xr,
@@ -145,12 +155,13 @@ __device__
 uchar calcCubeCase(
         uchar const &ec0, uchar const &ec1,
         uchar const &ec2, uchar const &ec3) {
-    // ec0 | (_,j,k)
-    // ec1 | (_,j+1,k)
-    // ec2 | (_,j,k+1)
-    // ec3 | (_,j+1,k+1)
+    // o -- is greater than or equal to
+    // case 0: (i-1) o-----o (i) | (_,j,k)
+    // case 1: (i-1) x-----o (i) | (_,j+1,k)
+    // case 2: (i-1) o-----x (i) | (_,j,k+1)
+    // case 3: (i-1) x-----x (i) | (_,j+1,k+1)
 
-    // Get cube cases
+    // Get cube cases by each vertex status
     uchar caseId = 0;
     if ((ec0 == 0) || (ec0 == 2)) // 0 | (i,j,k)
         caseId |= 1;
@@ -198,6 +209,7 @@ void get_cubeCases(
     calcTrimValues(xl, xr, ge0, ge1, ge2, ge3);
 
     int triCount = 0;
+    // Locate the pointer to Cubes represented by current 4 edges
     uchar *curCubeCases = cubeCases + k * (nx - 1) * (ny - 1) + j * (nx - 1);
 
     int xstart = 0;
@@ -215,22 +227,21 @@ void get_cubeCases(
             continue;
         }
 
-        //
-        // TODO: set table in device memory!
-        //
+        // Sum number of triangles
         triCount += numTris[caseId];
-        isCutCur = isCut[caseId]; // if xr == nx-1, then xr-1 is cut
-        // so this will be set
+        isCutCur = isCut[caseId];
 
+        // edge0, edge3, edge8 represents cut or not in x, y, z axis
         xstart += isCutCur[0];
         ystart += isCutCur[3];
         zstart += isCutCur[8];
     }
 
+    // Write sum of triangles back
     triCounter[k * (ny - 1) + j] = triCount;
 
     if (xr == nx - 1) {
-        // isCut was set at i = xr-1
+        // Process the last one
         ystart += isCutCur[1];
         zstart += isCutCur[9];
     }
@@ -240,6 +251,7 @@ void get_cubeCases(
     ge0.zstart = zstart;
 }
 
+// Process the last line parallel to y axises
 __global__
 void getGhostXZ(
         int nx, int ny, int nz,
@@ -294,6 +306,7 @@ void getGhostXZ(
     ge0.zstart = zstart * (1 - isCorner);
 }
 
+// Process last line parallel to z axises
 __global__
 void getGhostXY(
         int nx, int ny, int nz,
@@ -371,8 +384,9 @@ void FlyingEdges::pass2() {
     // TODO these can be launched and executed independently of each other
     int bw = FE_BLOCK_WIDTH;
 
-    // Making sure that the xz face takes care of the (_, ny-1, nz-1) gridEdge
+    // Making sure that the xz plane takes care of the (_, ny-1, nz-1) gridEdge
     // BE CAREFUL. xz takes care of corner. don't use (nz-1)
+    // TODO: Check if CUDA launch parms here correct?
     getGhostXZ<<<(nz + bw - 1) / bw, bw>>>(
             nx, ny, nz,
             edgeCases,
@@ -392,9 +406,10 @@ void FlyingEdges::pass2() {
 // on each gridEdge. Once these sizes are determined, memory is allocated
 // for storing triangles, points and normals.
 
+// Prefix sum in blockwise approach
 __global__
 void blockAccum(
-        int nx, int ny, int nz, // which are needed TODO?
+        int nx, int ny, int nz,
         int *triCounter,
         FlyingEdges::gridEdge *gridEdges,
         int *blockAccum) {
@@ -416,6 +431,7 @@ void blockAccum(
         for (int j = 0; j != ny; ++j) {
             FlyingEdges::gridEdge &ge = gridEdges[k * ny + j];
 
+            // Exclusive prefix sum approach: Every x/y/zstart stores the sum of previous info
             tmp = ge.xstart;
             ge.xstart = accumX;
             accumX += tmp;
@@ -431,6 +447,7 @@ void blockAccum(
 
         if (k < nz - 1) {
             for (int j = 0; j != ny - 1; ++j) {
+                // Why (-1)? Because triangles are recorded by cell-based way
                 int &curTriCount = triCounter[k * (ny - 1) + j];
 
                 tmp = curTriCount;
@@ -447,6 +464,7 @@ void blockAccum(
 
     __syncthreads();
 
+    // Prefix sum
     if (k < nz) {
         if (threadIdx.y == 0) // agh!
         {
@@ -488,16 +506,15 @@ void blockAccum(
     ge.zstart += accum[4 * (threadIdx.y - 1) + 2];
 }
 
+// Prefix sum in grid approach
 __global__ // TODO can split up along j here easy enough.
 void gridAccum(
         int nx, int ny, int nz, // which are needed TODO?
         int *triCounter,
         FlyingEdges::gridEdge *gridEdges,
-        int *blockAccum) // used as input here
+        int *blockAccum) // used as input here, it is pre-fixed grid sum info
 {
-    // not adding to the first block!
-    //
-    // add to individual y threads
+    // skip the first block
     int k = (blockIdx.z + 1) * blockDim.z + threadIdx.z;
 
     if (k >= nz)
@@ -563,9 +580,6 @@ void FlyingEdges::pass3() {
 
 
     if (numBlocks != 1) {
-        // std::partial_sum(2 2 3 4  3  2  2 ) TODO not using it get rid of header
-        // goes to         (2 4 7 11 14 16 18)
-        // std::partial_sum(hostBlockAccum, hostBlockAccum + numBlocks, hostBlockAccum);
 
         for (int i = 4; i != 4 * numBlocks; i += 4) {
             hostBlockAccum[i + 0] += hostBlockAccum[i - 4];
@@ -596,9 +610,9 @@ void FlyingEdges::pass3() {
                 hostBlockAccum[4 * (numBlocks - 1) + 2];
     numTris = hostBlockAccum[4 * (numBlocks - 1) + 3];
 
-//    cudaMalloc(&points,  3*sizeof(scalar_t)*numPoints);
-//    cudaMalloc(&normals, 3*sizeof(scalar_t)*numPoints);
-//    cudaMalloc(&tris, 3*sizeof(int)*numTris);
+    cudaMalloc(&points,  3*sizeof(scalar_t)*numPoints);
+    cudaMalloc(&normals, 3*sizeof(scalar_t)*numPoints);
+    cudaMalloc(&tris, 3*sizeof(int)*numTris);
 
     // free memory used in this function
     free(hostBlockAccum);
