@@ -1020,3 +1020,21 @@ void FlyingEdges::pass4() {
             points, normals, tris);                        // output
 
 }
+
+void FlyingEdges::moveOutput() {
+    host_points = (scalar_t *) malloc(3 * sizeof(scalar_t) * numPoints);
+    host_normals = (scalar_t *) malloc(3 * sizeof(scalar_t) * numPoints);
+    host_tris = (scalar_t *) malloc(3 * sizeof(scalar_t) * numTris);
+    cudaMemcpy(host_points, points, 3 * sizeof(scalar_t) * numPoints, cudaMemcpyDeviceToHost);
+    cudaMemcpy(host_normals, normals, 3 * sizeof(scalar_t) * numPoints, cudaMemcpyDeviceToHost);
+    cudaMemcpy(host_tris, tris, 3 * sizeof(scalar_t) * numPoints, cudaMemcpyDeviceToHost);
+
+    for (int i = 0; i < numPoints; i++) {
+        std::cout << "i: " << host_points[i * 3 + 0] << "j: " << host_points[i * 3 + 1] << "k: " << host_points[i * 3 + 2];
+                  << std::endl;
+    }
+    for (int i = 0; i < numTris; i++) {
+        std::cout << "i: " << host_tris[i * 3 + 0] << "j: " << host_tris[i * 3 + 1] << "k: " << host_tris[i * 3 + 2];
+        << std::endl;
+    }
+}
