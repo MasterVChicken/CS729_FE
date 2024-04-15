@@ -10,7 +10,6 @@
 #include "config/config.h"
 #include "utils/Image3D.h"
 #include "utils/marchingCubesTables.h"
-#include "utils/TriangleMesh.h"
 
 // We changed type of FlyingEdges from 'class' to 'struct' because it ocurred error: 'here is inaccessible'.
 // We searched internet and found that it was because class members are, by default, private.
@@ -143,7 +142,9 @@ struct FlyingEdges {
 
     void pass4();
 
-    TriangleMesh moveOutput();
+    void moveOutput();
+
+    void writeObj();
 
 public:
     struct gridEdge {

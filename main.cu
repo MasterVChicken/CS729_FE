@@ -20,6 +20,8 @@ int main() {
     algo.pass2();
     algo.pass3();
     algo.pass4();
+    algo.moveOutput();
+    algo.writeObj();
 
     return 0;
 }
