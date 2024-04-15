@@ -6,6 +6,8 @@
 #include "utils/marchingCubesTables.h"
 #include "config/config.h"
 
+// TODO: We forget not free some of symbols for outputs. Try to fix bugs in future.
+
 // Pass 1 of the algorithm labels each edge parallel to the x-axis as cut
 // or not. In the process, each gridEdge is assigned an xl and xr.
 // All edges before xl are uncut and all edges after xr are uncut.
@@ -380,19 +382,19 @@ void FlyingEdges::pass2() {
     // cudaFree(edgeCases);
 
     // TODO these can be launched and executed independently of each other
-    int bw = FE_BLOCK_WIDTH;
+//    int bw = FE_BLOCK_WIDTH;
 
     // Making sure that the xz plane takes care of the (_, ny-1, nz-1) gridEdge
     // BE CAREFUL. xz takes care of corner. don't use (nz-1)
     // TODO: Check if CUDA launch parms here correct?
-    getGhostXZ<<<(nz + bw - 1) / bw, bw>>>(
-            nx, ny, nz,
-            edgeCases,
-            gridEdges);
-    getGhostXY<<<((ny - 1) + bw - 1) / bw, bw>>>(
-            nx, ny, nz,
-            edgeCases,
-            gridEdges);
+//    getGhostXZ<<<(nz + bw - 1) / bw, bw>>>(
+//            nx, ny, nz,
+//            edgeCases,
+//            gridEdges);
+//    getGhostXY<<<((ny - 1) + bw - 1) / bw, bw>>>(
+//            nx, ny, nz,
+//            edgeCases,
+//            gridEdges);
 
     cudaDeviceSynchronize();
 
@@ -766,8 +768,6 @@ void interpolateOnCube(
     uchar i0 = edgeVertices[edge][0];
     uchar i1 = edgeVertices[edge][1];
 
-    // TODO: check if isovals here is correct. It seems to be mapped with the current edge in the global space.
-    // There should be offset with the input pts, isovals and out
     scalar_t weight = (isoval - isovals[i0]) / (isovals[i1] - isovals[i0]);
     interpolate(weight, pts + 3 * i0, pts + 3 * i1, out);
 }
@@ -878,6 +878,8 @@ void getPointsAndNormals(
         //   their counters don't need to be incremented because they
         //   won't be used again.
 
+        // Manage boundary cases if needed. Otherwise just update globalIdx.
+
         // e1 is mapped to y1counter
         if (isCutCur[1]) {
             int idx = ge0.ystart + y0counter;
@@ -980,7 +982,7 @@ void getPointsAndNormals(
         }
 
         // Add triangles
-        const char *caseTri = caseTriangles[caseId]; // size 16
+        const char *caseTri = caseTriangles[caseId];
         for (int idx = 0; caseTri[idx] != -1; idx += 3) {
 //            tris[3 * triIdx + 0] = i;
 //            tris[3 * triIdx + 1] = j;

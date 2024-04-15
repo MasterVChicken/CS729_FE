@@ -64,7 +64,9 @@ public:
     }
 
     ~Image3D() {
-        delete[] data;  // Properly delete allocated memory
+        if(!data){
+            delete[] data;  // Properly delete allocated memory
+        }
     }
 
 
