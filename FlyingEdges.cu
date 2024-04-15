@@ -32,7 +32,6 @@ uchar calcCaseEdge(
         return 3;
 }
 
-// TODO: cuda-memcheck shows that it has memory leak here
 __global__
 void assign_edgeCases(
         scalar_t *pointValues,
@@ -50,14 +49,13 @@ void assign_edgeCases(
     // Because we need to make sure that we can deal with boundary case
     // To make compare for the last element of current block and the first element of next block
     // But we cannot straightly access across different blocks, so we do pre-load here.
-    // TODO: there might be problem with FE_BLOCK_WIDTH_PLUS here(too large)
     __shared__ bool isGE[FE_BLOCK_WIDTH_PLUS_ONE];
 
     if (i < nx)
         isGE[threadIdx.x] = pointValues[k * nx * ny + j * nx + i] >= isoval;
 
-    // TODO: fix memory out of boundary here
-    if (threadIdx.x == 0 && i < nx - 1) {
+    // Maybe bug fixed?
+    if (threadIdx.x == 0 && i < nx - 1 && (j * nx + i + blockDim.x) < nx * ny) {
         // Deal with the first element of next block
         isGE[blockDim.x] = pointValues[k * nx * ny + j * nx + i + blockDim.x] >= isoval;
     }
@@ -610,9 +608,9 @@ void FlyingEdges::pass3() {
                 hostBlockAccum[4 * (numBlocks - 1) + 2];
     numTris = hostBlockAccum[4 * (numBlocks - 1) + 3];
 
-    cudaMalloc(&points,  3*sizeof(scalar_t)*numPoints);
-    cudaMalloc(&normals, 3*sizeof(scalar_t)*numPoints);
-    cudaMalloc(&tris, 3*sizeof(int)*numTris);
+    cudaMalloc(&points, 3 * sizeof(scalar_t) * numPoints);
+    cudaMalloc(&normals, 3 * sizeof(scalar_t) * numPoints);
+    cudaMalloc(&tris, 3 * sizeof(int) * numTris);
 
     // free memory used in this function
     free(hostBlockAccum);
@@ -628,13 +626,14 @@ void computeGradient(
         scalar_t *data,
         scalar_t *spacing,
         scalar_t *point) {
+    // x0, x1, x2 denotes x, y, z
     scalar_t x0[2];
     scalar_t x1[2];
     scalar_t x2[2];
     scalar_t run[3];
 
     size_t dataIdx = k * nx * ny + j * nx + i;
-
+    // The sequence is [0]>[1]
     if (i == 0) {
         x0[0] = data[dataIdx + 1];
         x0[1] = data[dataIdx];
@@ -659,7 +658,7 @@ void computeGradient(
         run[1] = spacing[1];
     } else {
         x1[0] = data[dataIdx + nx];
-        x1[1] = data[dataIdx - ny];
+        x1[1] = data[dataIdx - nx];
         run[1] = 2 * spacing[1];
     }
 
@@ -698,6 +697,7 @@ void getCubeInfo(
     isovalCube[6] = pointValues[(k + 1) * ny * nx + (j + 1) * nx + (i + 1)];
     isovalCube[7] = pointValues[(k + 1) * ny * nx + (j + 1) * nx + i];
 
+    // Get position info of 8 vertexes using spacing and zeroPos info
     scalar_t xpos = zeroPos[0] + i * spacing[0];
     scalar_t ypos = zeroPos[1] + j * spacing[1];
     scalar_t zpos = zeroPos[2] + k * spacing[2];
@@ -762,10 +762,12 @@ void interpolateOnCube(
         scalar_t *pts,
         scalar_t *isovals,
         scalar_t *out) {
-    // TODO: fix device memory table here
+
     uchar i0 = edgeVertices[edge][0];
     uchar i1 = edgeVertices[edge][1];
 
+    // TODO: check if isovals here is correct. It seems to be mapped with the current edge in the global space.
+    // There should be offset with the input pts, isovals and out
     scalar_t weight = (isoval - isovals[i0]) / (isovals[i1] - isovals[i0]);
     interpolate(weight, pts + 3 * i0, pts + 3 * i1, out);
 }
@@ -797,20 +799,26 @@ void getPointsAndNormals(
         return;
 
     size_t triIdx = triCounter[k * (ny - 1) + j];
+    // get the start cell
     uchar *curCubeCaseIds = cubeCases + (nx - 1) * (k * (ny - 1) + j);
 
     size_t x0counter = 0;
     size_t y0counter = 0;
     size_t z0counter = 0;
-
     size_t x1counter = 0;
+    size_t y1counter = 0;
     size_t z1counter = 0;
-
     size_t x2counter = 0;
     size_t y2counter = 0;
-
+    size_t z2counter = 0;
     size_t x3counter = 0;
+    size_t y3counter = 0;
+    size_t z3counter = 0;
 
+
+    // Why (-2)?
+    // Because we are using Central Difference Method to calculate gradients and normals
+    // TODO: Since we have set boundary process for k = nz-1 and j = ny - 1, we must check if we have overlooked some boundary cases.
     bool isYEnd = (j == ny - 2);
     bool isZEnd = (k == nz - 2);
 
@@ -829,12 +837,6 @@ void getPointsAndNormals(
         }
 
         const bool *isCutCur = isCut[caseId]; // has 12 elements
-
-        // Most of the information contained in pointCube, isovalCube
-        // and gradCube will be used--but not necessarily all. It has
-        // not been tested whether or not obtaining only the information
-        // needed will provide a significant speedup--but
-        // most likely not.
 
         // fill out pointCube, isovalCube and gradCube
         getCubeInfo(i, j, k,
@@ -868,38 +870,39 @@ void getPointsAndNormals(
             globalIdxs[8] = idx;
             ++z0counter;
         }
-
+        // We are going from xl to xr in x-incremental way. So the right 4 edges will be revisited in the next iteration.
         // Note:
         //   e1, e5, e9 and e11 will be visited in the next iteration
         //   when they are e3, e7, e8 and 10 respectively. So don't
         //   increment their counters. When the cube is an edge cube,
         //   their counters don't need to be incremented because they
-        //   won't be used agin.
+        //   won't be used again.
 
-        // Manage boundary cases if needed. Otherwise just update
-        // globalIdx.
+        // e1 is mapped to y1counter
         if (isCutCur[1]) {
             int idx = ge0.ystart + y0counter;
             if (isXEnd) {
 
                 interpolateOnCube(1, isoval, pointCube, isovalCube, points + 3 * idx);
                 interpolateOnCube(1, isoval, gradCube, isovalCube, normals + 3 * idx);
-                // y0counter counter doesn't need to be incremented
+                // y1counter counter doesn't need to be incremented
                 // because it won't be used again.
             }
             globalIdxs[1] = idx;
         }
 
+        // e9 is mapped to z1counter
         if (isCutCur[9]) {
             int idx = ge0.zstart + z0counter;
             if (isXEnd) {
                 interpolateOnCube(9, isoval, pointCube, isovalCube, points + 3 * idx);
                 interpolateOnCube(9, isoval, gradCube, isovalCube, normals + 3 * idx);
-                // z0counter doesn't need to in incremented.
+                // z1counter doesn't need to in incremented.
             }
             globalIdxs[9] = idx;
         }
 
+        // e2 is mapped to x1counter
         if (isCutCur[2]) {
             int idx = ge1.xstart + x1counter;
             if (isYEnd) {
@@ -910,16 +913,18 @@ void getPointsAndNormals(
             ++x1counter;
         }
 
+        // e10 is mapped to z2counter
         if (isCutCur[10]) {
-            int idx = ge1.zstart + z1counter;
+            int idx = ge1.zstart + z2counter;
             if (isYEnd) {
                 interpolateOnCube(10, isoval, pointCube, isovalCube, points + 3 * idx);
                 interpolateOnCube(10, isoval, gradCube, isovalCube, normals + 3 * idx);
             }
             globalIdxs[10] = idx;
-            ++z1counter;
+            ++z2counter;
         }
 
+        // e4 is mapped to x2counter
         if (isCutCur[4]) {
             int idx = ge2.xstart + x2counter;
             if (isZEnd) {
@@ -930,6 +935,7 @@ void getPointsAndNormals(
             ++x2counter;
         }
 
+        // e7 is mapped to y2counter
         if (isCutCur[7]) {
             int idx = ge2.ystart + y2counter;
             if (isZEnd) {
@@ -940,26 +946,29 @@ void getPointsAndNormals(
             ++y2counter;
         }
 
+        // e11 is mapped to z3counter
         if (isCutCur[11]) {
-            int idx = ge1.zstart + z1counter;
+            int idx = ge1.zstart + z3counter;
             if (isXEnd and isYEnd) {
                 interpolateOnCube(11, isoval, pointCube, isovalCube, points + 3 * idx);
                 interpolateOnCube(11, isoval, gradCube, isovalCube, normals + 3 * idx);
-                // z1counter does not need to be incremented.
+                // z3counter does not need to be incremented.
             }
             globalIdxs[11] = idx;
         }
 
+        // e5 is mapped to y3counter
         if (isCutCur[5]) {
-            int idx = ge2.ystart + y2counter;
+            int idx = ge2.ystart + y3counter;
             if (isXEnd and isZEnd) {
                 interpolateOnCube(5, isoval, pointCube, isovalCube, points + 3 * idx);
                 interpolateOnCube(5, isoval, gradCube, isovalCube, normals + 3 * idx);
-                // y2 counter does not need to be incremented.
+                // y3 counter does not need to be incremented.
             }
             globalIdxs[5] = idx;
         }
 
+        // e6 is mapped to x3counter
         if (isCutCur[6]) {
             int idx = ge3.xstart + x3counter;
             if (isYEnd and isZEnd) {
@@ -973,14 +982,14 @@ void getPointsAndNormals(
         // Add triangles
         const char *caseTri = caseTriangles[caseId]; // size 16
         for (int idx = 0; caseTri[idx] != -1; idx += 3) {
-            tris[3 * triIdx + 0] = i;
-            tris[3 * triIdx + 1] = j;
-            tris[3 * triIdx + 2] = k;
+//            tris[3 * triIdx + 0] = i;
+//            tris[3 * triIdx + 1] = j;
+//            tris[3 * triIdx + 2] = k;
 
-//            tris[3*triIdx + 0] = globalIdxs[caseTri[idx]];
-//            tris[3*triIdx + 1] = globalIdxs[caseTri[idx+1]];
-//            tris[3*triIdx + 2] = globalIdxs[caseTri[idx+2]];
-//            ++triIdx;
+            tris[3 * triIdx + 0] = globalIdxs[caseTri[idx]];
+            tris[3 * triIdx + 1] = globalIdxs[caseTri[idx + 1]];
+            tris[3 * triIdx + 2] = globalIdxs[caseTri[idx + 2]];
+            ++triIdx;
         }
     }
 }
