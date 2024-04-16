@@ -9,6 +9,7 @@
 #include "../config/config.h"
 
 // read meta data from raw file
+// return vector of unsigned short
 std::vector<unsigned short> readRawFile(const std::string &filePath, int width, int height, int depth) {
     std::ifstream file(filePath, std::ios::binary);
     std::vector<unsigned short> pixels;

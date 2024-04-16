@@ -9,15 +9,13 @@
 
 class Image3D {
 public:
-    Image3D(const std::vector<ushort>& metadata,
+    Image3D(const std::vector<scalar_t>& metadata,
             const std::array<scalar_t, 3>& spacing,
             const std::array<scalar_t, 3>& zeroPos,
             const std::array<size_t, 3>& dimensions)
             : metadata(metadata), spacing(spacing), zeroPos(zeroPos),
               nx(dimensions[0]), ny(dimensions[1]), nz(dimensions[2])
     {
-        // To make data suitable for iso-contouring application, we need to transform it to some scalar format
-        // transform data from RGB 565 format to grayscale
         if (nx == 0 || ny == 0 || nz == 0) {
             throw std::runtime_error("Dimensions cannot be zero.");
         }
@@ -27,14 +25,15 @@ public:
         }
 
         data = new scalar_t[nx * ny * nz];  // Allocating memory
-
+        data = metadata.data();
+        // If it is raw data with RGB 565 format
         // Transform data from RGB 565 format to grayscale
-        for (size_t i = 0; i < metadata.size(); i++) {
-            int r = (metadata[i] >> 11) & 0x1F;
-            int g = (metadata[i] >> 5) & 0x3F;
-            int b = metadata[i] & 0x1F;
-            data[i] = 0.299 * r + 0.587 * g + 0.114 * b;
-        }
+//        for (size_t i = 0; i < metadata.size(); i++) {
+//            int r = (metadata[i] >> 11) & 0x1F;
+//            int g = (metadata[i] >> 5) & 0x3F;
+//            int b = metadata[i] & 0x1F;
+//            data[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+//        }
     }
 
     int getX() const{
@@ -71,8 +70,10 @@ public:
 
 
 private:
-    std::vector<ushort> metadata;       // A vector containing scalar values
+//    std::vector<ushort> metadata;       // A vector containing scalar values
     // along three-dimensional space.
+
+    std::vector<scalar_t> metadata;
 
     // Grayscale data
     scalar_t *data;
