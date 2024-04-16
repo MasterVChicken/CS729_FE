@@ -1,5 +1,5 @@
 //
-// Created by Yanliang Li on 4/9/24.
+// Created by Yanliang Li on 4/16/24.
 //
 
 #ifndef CS729_FE_CONFIG_H
@@ -14,9 +14,7 @@
 #include <stdio.h>
 #include <cstdint>
 #include <cstdlib>
-#include <cuda_runtime.h>
 #include <cassert>
-#include <cstddef>
 
 using std::size_t;
 
@@ -28,17 +26,5 @@ using ushort = unsigned short;
 
 using cube_t = std::array<std::array<scalar_t, 3>, 8>;
 using scalarCube_t = std::array<scalar_t, 8>;
-
-// TODO: we might need to adjust the BLOCK WIDTH due to FullHead.raw is only about 256*256*94, so max dimension should be 256
-
-//#define FE_BLOCK_WIDTH 512
-//#define FE_BLOCK_WIDTH_PLUS_ONE 513
-
-#define FE_BLOCK_WIDTH 32
-#define FE_BLOCK_WIDTH_PLUS_ONE 33
-
-// FE_BLOCK_WIDTH = FE_BLOCK_WIDTH_Y * FE_BLOCK_WIDTH_Z
-#define FE_BLOCK_WIDTH_Y 4
-#define FE_BLOCK_WIDTH_Z 8
 
 #endif //CS729_FE_CONFIG_H
