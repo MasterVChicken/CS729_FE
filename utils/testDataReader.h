@@ -9,18 +9,17 @@
 
 // read data from generated data for test usage
 // returns vector of float
-std::vector<scalar_t> readTestData(const std::string &filePath, int width, int height, int depth){
+std::vector<scalar_t> readTestData(const std::string &filePath, int width, int height, int depth) {
     std::ifstream file(filePath, std::ios::binary);
-    std::vector<scalar_t> pixels;
     if (!file) {
         std::cerr << "Cannot open file.\n";
         return pixels;
     }
 
-    int total_elements = width*height*depth;
-    std::vector<scalar_t> data(total_elements);
+    int total_elements = width * height * depth;
+    std::vector <scalar_t> pixels(total_elements);
 
-    file.read(reinterpret_cast<char*>(pixels.data()), total_elements * sizeof(float));
+    file.read(reinterpret_cast<char *>(pixels.data()), total_elements * sizeof(float));
     file.close();
 
     return pixels;

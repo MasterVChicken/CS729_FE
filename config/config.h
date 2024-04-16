@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cuda_runtime.h>
+#include <cassert>
 
 using std::size_t;
 
@@ -32,11 +33,11 @@ using scalarCube_t = std::array<scalar_t, 8>;
 //#define FE_BLOCK_WIDTH 512
 //#define FE_BLOCK_WIDTH_PLUS_ONE 513
 
-#define FE_BLOCK_WIDTH 128
-#define FE_BLOCK_WIDTH_PLUS_ONE 129
+#define FE_BLOCK_WIDTH 32
+#define FE_BLOCK_WIDTH_PLUS_ONE 33
 
 // FE_BLOCK_WIDTH = FE_BLOCK_WIDTH_Y * FE_BLOCK_WIDTH_Z
-#define FE_BLOCK_WIDTH_Y 8
-#define FE_BLOCK_WIDTH_Z 16
+#define FE_BLOCK_WIDTH_Y 4
+#define FE_BLOCK_WIDTH_Z 8
 
 #endif //CS729_FE_CONFIG_H

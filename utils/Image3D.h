@@ -9,13 +9,12 @@
 
 class Image3D {
 public:
-    Image3D(const std::vector<scalar_t>& metadata,
-            const std::array<scalar_t, 3>& spacing,
-            const std::array<scalar_t, 3>& zeroPos,
-            const std::array<size_t, 3>& dimensions)
+    Image3D(const std::vector <scalar_t> &metadata,
+            const std::array<scalar_t, 3> &spacing,
+            const std::array<scalar_t, 3> &zeroPos,
+            const std::array<size_t, 3> &dimensions)
             : metadata(metadata), spacing(spacing), zeroPos(zeroPos),
-              nx(dimensions[0]), ny(dimensions[1]), nz(dimensions[2])
-    {
+              nx(dimensions[0]), ny(dimensions[1]), nz(dimensions[2]) {
         if (nx == 0 || ny == 0 || nz == 0) {
             throw std::runtime_error("Dimensions cannot be zero.");
         }
@@ -25,7 +24,10 @@ public:
         }
 
         data = new scalar_t[nx * ny * nz];  // Allocating memory
-        data = metadata.data();
+        for (int i = 0; i < metadata.size(); i++) {
+            data[i] = metadata[i];
+        }
+//        data = metadata.data();
         // If it is raw data with RGB 565 format
         // Transform data from RGB 565 format to grayscale
 //        for (size_t i = 0; i < metadata.size(); i++) {
@@ -36,15 +38,15 @@ public:
 //        }
     }
 
-    int getX() const{
+    int getX() const {
         return nx;
     }
 
-    int getY() const{
+    int getY() const {
         return ny;
     }
 
-    int getZ() const{
+    int getZ() const {
         return nz;
     }
 
@@ -52,18 +54,16 @@ public:
         return data;
     }
 
-    std::array<scalar_t, 3> getZeroPos() const
-    {
+    std::array<scalar_t, 3> getZeroPos() const {
         return zeroPos;
     }
 
-    std::array<scalar_t, 3> getSpacing() const
-    {
+    std::array<scalar_t, 3> getSpacing() const {
         return spacing;
     }
 
     ~Image3D() {
-        if(!data){
+        if (!data) {
             delete[] data;  // Properly delete allocated memory
         }
     }
@@ -73,7 +73,7 @@ private:
 //    std::vector<ushort> metadata;       // A vector containing scalar values
     // along three-dimensional space.
 
-    std::vector<scalar_t> metadata;
+    std::vector <scalar_t> metadata;
 
     // Grayscale data
     scalar_t *data;
